@@ -8,18 +8,22 @@ AI-powered agents that review your Terraform PRs for security/compliance issues 
 Sample AWS infrastructure (VPC, S3, IAM, RDS, ElastiCache) used as the target for the PR reviewer agent. Contains intentional security issues for demonstration.
 
 ### `/agent-pr-reviewer` — Terraform PR Review Agent
-A LangGraph-based agent that reviews Terraform pull requests for:
+A Python agent (using the Anthropic Claude API directly) that reviews Terraform pull requests for:
 - **Security**: Public access, missing encryption, overly permissive IAM, hardcoded credentials
 - **Reliability**: No multi-AZ, missing backups, no deletion protection
 - **Cost**: Oversized instances, unbounded auto-scaling, missing lifecycle rules
 - **Best practices**: No remote state, missing tags, deprecated patterns
 
 ### `/agent-cicd-debugger` — CI/CD Pipeline Debugger Agent
-A LangGraph-based agent that diagnoses failed GitHub Actions runs:
+A Python agent (using the Anthropic Claude API directly) that diagnoses failed GitHub Actions runs:
 - Parses noisy CI logs to extract the actual error
 - Identifies the failing step and related configuration
 - Performs root cause analysis using Claude
 - Generates concrete fix suggestions with code changes
+
+## Tech Stack
+
+- **Python** + **Anthropic Claude API** (via `anthropic` SDK) + **PyGithub**
 
 ## Prerequisites
 
