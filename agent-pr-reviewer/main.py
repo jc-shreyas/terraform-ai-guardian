@@ -303,15 +303,16 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    # Load env
+    # Env vars already set (e.g. GitHub Actions secrets) take priority;
+    # load_dotenv() only fills in values that aren't already in the environment.
     load_dotenv()
     api_key = os.getenv("ANTHROPIC_API_KEY")
     github_token = os.getenv("GITHUB_TOKEN")
 
     if not api_key:
-        sys.exit("Error: ANTHROPIC_API_KEY is not set. Add it to your .env file.")
+        sys.exit("Error: ANTHROPIC_API_KEY is not set. Set it as an env var or add it to .env.")
     if not github_token:
-        sys.exit("Error: GITHUB_TOKEN is not set. Add it to your .env file.")
+        sys.exit("Error: GITHUB_TOKEN is not set. Set it as an env var or add it to .env.")
 
     print(f"Fetching .tf files from {args.repo} PR #{args.pr}...")
     tf_files = fetch_tf_files(args.repo, args.pr, github_token)

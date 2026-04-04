@@ -10,9 +10,16 @@ on:
 permissions:
   pull-requests: write
 
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   review:
     runs-on: ubuntu-latest
+    # Skip PRs from forks — they don't have access to repo secrets
+    if: >
+      github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Checkout
