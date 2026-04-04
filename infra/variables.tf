@@ -27,3 +27,12 @@ variable "instance_type" {
   type        = string
   default     = "t3.micro"
 }
+
+variable "tags" {
+  description = "Default tags for all resources"
+  type        = map(string)
+  default     = {
+    ManagedBy = "terraform"
+    Project   = "devops-demo"
+  }
+}
