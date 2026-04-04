@@ -22,6 +22,7 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+# Instance configuration variables
 variable "instance_type" {
   description = "EC2 instance type for web servers"
   type        = string
