@@ -10,7 +10,7 @@ resource "aws_lambda_function" "processor" {
   environment {
     variables = {
       DB_HOST     = aws_db_instance.main.endpoint
-      DB_PASSWORD = "ProductionPass456!"
+      DB_PASSWORD = "ProductionPass45678!"
       API_KEY     = "sk-live-abc123xyz789"
     }
   }
