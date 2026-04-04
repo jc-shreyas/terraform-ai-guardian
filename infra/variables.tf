@@ -25,7 +25,7 @@ variable "vpc_cidr" {
 variable "backup_retention_days" {
   description = "Number of days to retain backups"
   type        = number
-  default     = 30
+  default     = 90
 }
 
 variable "enable_monitoring" {
