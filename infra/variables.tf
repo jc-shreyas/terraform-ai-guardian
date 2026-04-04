@@ -21,3 +21,21 @@ variable "vpc_cidr" {
   type        = string
   default     = "10.0.0.0/16"
 }
+
+variable "backup_retention_days" {
+  description = "Number of days to retain backups"
+  type        = number
+  default     = 30
+}
+
+variable "enable_monitoring" {
+  description = "Enable CloudWatch monitoring"
+  type        = bool
+  default     = true
+}
+
+variable "allowed_ssh_cidrs" {
+  description = "CIDR blocks allowed to SSH"
+  type        = list(string)
+  default     = ["10.0.0.0/8"]
+}
