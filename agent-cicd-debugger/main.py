@@ -64,6 +64,7 @@ class CICDDebugState:
     conclusion: str = ""
     # Log parsing
     failed_job: str = ""
+    failed_job_id: int = 0
     failed_step: str = ""
     error_message: str = ""
     log_context: str = ""
@@ -95,6 +96,7 @@ def fetch_run_metadata(state: CICDDebugState, github_token: str) -> None:
         if job.conclusion != "failure":
             continue
         state.failed_job = job.name
+        state.failed_job_id = job.id
         for step in job.steps:
             if step.conclusion == "failure":
                 state.failed_step = step.name
@@ -125,19 +127,33 @@ def fetch_workflow_yaml(state: CICDDebugState, github_token: str) -> None:
 # ---------------------------------------------------------------------------
 
 def fetch_and_parse_logs(state: CICDDebugState, github_token: str) -> None:
-    """Download log zip via REST API, find the failed job's log, extract error + context."""
-    url = f"https://api.github.com/repos/{state.repo_name}/actions/runs/{state.run_id}/logs"
-    headers = {
+    """Download logs for the failed job, extract error + context.
+
+    Uses the per-job logs endpoint when a job ID is available (plain text, no zip),
+    falling back to the run-level zip endpoint. GitHub redirects both to a pre-signed
+    CDN URL — the Authorization header must NOT be forwarded to the CDN or it 403s.
+    """
+    auth_headers = {
         "Authorization": f"Bearer {github_token}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    response = requests.get(url, headers=headers, timeout=60)
-    response.raise_for_status()
 
-    zf = zipfile.ZipFile(io.BytesIO(response.content))
-    target_prefix = state.failed_job.lower().replace(" ", "_") if state.failed_job else ""
-    log_text = _pick_best_log(zf, target_prefix)
+    log_text = None
+
+    # Prefer per-job endpoint (returns plain text, no zip needed)
+    if state.failed_job_id:
+        job_url = f"https://api.github.com/repos/{state.repo_name}/actions/jobs/{state.failed_job_id}/logs"
+        log_text = _download_following_redirect(job_url, auth_headers)
+
+    # Fall back to run-level zip
+    if log_text is None:
+        run_url = f"https://api.github.com/repos/{state.repo_name}/actions/runs/{state.run_id}/logs"
+        zip_bytes = _download_following_redirect(run_url, auth_headers, binary=True)
+        if zip_bytes:
+            zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+            target_prefix = state.failed_job.lower().replace(" ", "_") if state.failed_job else ""
+            log_text = _pick_best_log(zf, target_prefix)
 
     if not log_text:
         state.error_message = "(log extraction failed)"
@@ -155,6 +171,32 @@ def fetch_and_parse_logs(state: CICDDebugState, github_token: str) -> None:
     start = max(0, error_idx - 10)
     end = min(len(lines), error_idx + CONTEXT_LINES)
     state.log_context = "\n".join(lines[start:end])
+
+
+def _download_following_redirect(url: str, auth_headers: dict, binary: bool = False):
+    """GET url with auth headers, then follow any redirect WITHOUT auth headers.
+
+    GitHub's log endpoints return a 302 to a pre-signed CDN URL. Sending the
+    Authorization header to the CDN causes a 403, so we handle the redirect manually.
+    Returns decoded text (or raw bytes if binary=True), or None on failure.
+    """
+    # Step 1: hit the API endpoint to get the redirect location
+    r1 = requests.get(url, headers=auth_headers, allow_redirects=False, timeout=30)
+    if r1.status_code not in (301, 302, 303, 307, 308):
+        # No redirect — response body is the content itself
+        if r1.ok:
+            return r1.content if binary else r1.text
+        return None
+
+    cdn_url = r1.headers.get("Location")
+    if not cdn_url:
+        return None
+
+    # Step 2: download from CDN without auth headers
+    r2 = requests.get(cdn_url, timeout=180)
+    if not r2.ok:
+        return None
+    return r2.content if binary else r2.text
 
 
 def _clean_line(line: str) -> str:
@@ -280,19 +322,28 @@ def print_diagnosis(state: CICDDebugState) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Step 5: Post commit comment
+# Step 5: Post comment (PR or commit)
 # ---------------------------------------------------------------------------
+
+def post_comment_to_pr(state: CICDDebugState, pr_number: int, github_token: str) -> str:
+    """Post the diagnosis as a PR comment and return the comment URL."""
+    gh = Github(auth=Auth.Token(github_token))
+    repo = gh.get_repo(state.repo_name)
+    pr = repo.get_pull(pr_number)
+    comment = pr.create_issue_comment(_build_comment_body(state))
+    return comment.html_url
+
 
 def post_comment_to_commit(state: CICDDebugState, github_token: str) -> str:
     """Post the diagnosis as a commit comment and return the comment URL."""
     gh = Github(auth=Auth.Token(github_token))
     repo = gh.get_repo(state.repo_name)
     commit = repo.get_commit(state.head_sha)
-    comment = commit.create_comment(_build_commit_comment(state))
+    comment = commit.create_comment(_build_comment_body(state))
     return comment.html_url
 
 
-def _build_commit_comment(state: CICDDebugState) -> str:
+def _build_comment_body(state: CICDDebugState) -> str:
     return "\n".join([
         "## CI/CD Failure Diagnosis",
         "",
@@ -328,6 +379,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="AI-powered CI/CD failure debugger")
     parser.add_argument("--repo", required=True, help='GitHub repo, e.g. "owner/repo"')
     parser.add_argument("--run-id", required=True, type=int, help="GitHub Actions workflow run ID")
+    parser.add_argument("--pr", type=int, default=None, help="PR number to post diagnosis to (falls back to commit comment)")
     return parser.parse_args()
 
 
@@ -366,8 +418,12 @@ def main() -> None:
 
     print_diagnosis(state)
 
-    print("Posting diagnosis to GitHub commit...")
-    comment_url = post_comment_to_commit(state, github_token)
+    if args.pr:
+        print(f"Posting diagnosis to PR #{args.pr}...")
+        comment_url = post_comment_to_pr(state, args.pr, github_token)
+    else:
+        print(f"Posting diagnosis to commit {state.head_sha[:7]}...")
+        comment_url = post_comment_to_commit(state, github_token)
     print(f"Comment posted: {comment_url}")
 
 
