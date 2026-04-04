@@ -94,3 +94,31 @@ resource "aws_s3_bucket_policy" "static_site" {
     ]
   })
 }
+
+# --- Backup Bucket ---
+
+resource "aws_s3_bucket" "backups" {
+  bucket        = "${var.project_name}-backups-${var.environment}"
+  force_destroy = true
+
+  tags = {
+    Name = "${var.project_name}-backups"
+  }
+}
+
+resource "aws_s3_bucket_policy" "backups" {
+  bucket = aws_s3_bucket.backups.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowCrossAccountAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "*" }
+        Action    = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource  = "${aws_s3_bucket.backups.arn}/*"
+      }
+    ]
+  })
+}
