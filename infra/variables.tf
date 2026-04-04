@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "AWS region"
   type        = string
-  default     = "ap-southeast-2"  # Sydney — relevant for Australian job market
+  default     = "ap-southeast-2" # Sydney — relevant for Australian job market
 }
 
 variable "project_name" {
