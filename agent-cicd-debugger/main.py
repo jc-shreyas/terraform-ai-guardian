@@ -13,6 +13,7 @@ import re
 import sys
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import anthropic
 import requests
@@ -325,13 +326,46 @@ def print_diagnosis(state: CICDDebugState) -> None:
 # Step 5: Post comment (PR or commit)
 # ---------------------------------------------------------------------------
 
+DIAGNOSIS_MARKER = "## CI/CD Failure Diagnosis"
+
+
 def post_comment_to_pr(state: CICDDebugState, pr_number: int, github_token: str) -> str:
-    """Post the diagnosis as a PR comment and return the comment URL."""
+    """Upsert the diagnosis comment on the PR and return the comment URL."""
     gh = Github(auth=Auth.Token(github_token))
     repo = gh.get_repo(state.repo_name)
     pr = repo.get_pull(pr_number)
-    comment = pr.create_issue_comment(_build_comment_body(state))
+    body = _build_comment_body(state)
+
+    for existing in pr.get_issue_comments():
+        if existing.body.startswith(DIAGNOSIS_MARKER):
+            existing.edit(body)
+            return existing.html_url
+
+    comment = pr.create_issue_comment(body)
     return comment.html_url
+
+
+def post_resolved_comment_to_pr(pr_number: int, repo_name: str, github_token: str) -> str | None:
+    """If a diagnosis comment exists on the PR, update it to show the issue is resolved."""
+    gh = Github(auth=Auth.Token(github_token))
+    repo = gh.get_repo(repo_name)
+    pr = repo.get_pull(pr_number)
+
+    for existing in pr.get_issue_comments():
+        if existing.body.startswith(DIAGNOSIS_MARKER):
+            resolved_body = "\n".join([
+                DIAGNOSIS_MARKER,
+                "",
+                "✅ **Pipeline is now passing.** The previously reported failure has been resolved.",
+                "",
+                "---",
+                "*Posted by terraform-ai-guardian*",
+                f"_Last updated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC_",
+            ])
+            existing.edit(resolved_body)
+            return existing.html_url
+
+    return None
 
 
 def post_comment_to_commit(state: CICDDebugState, github_token: str) -> str:
@@ -368,6 +402,7 @@ def _build_comment_body(state: CICDDebugState) -> str:
         "",
         "---",
         "*Posted by terraform-ai-guardian*",
+        f"_Last updated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC_",
     ])
 
 
@@ -406,6 +441,16 @@ def main() -> None:
     print(f"  Conclusion  : {state.conclusion}")
     print(f"  Failed job  : {state.failed_job or '(unknown)'}")
     print(f"  Failed step : {state.failed_step or '(unknown)'}")
+
+    # If the run passed and a PR was given, update any existing diagnosis to "resolved"
+    if state.conclusion != "failure" and args.pr:
+        print(f"Run did not fail — checking for existing diagnosis comment on PR #{args.pr}...")
+        comment_url = post_resolved_comment_to_pr(args.pr, args.repo, github_token)
+        if comment_url:
+            print(f"Marked resolved: {comment_url}")
+        else:
+            print("No existing diagnosis comment found — nothing to update.")
+        return
 
     print("Fetching workflow YAML...")
     fetch_workflow_yaml(state, github_token)

@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import anthropic
@@ -269,8 +270,12 @@ def build_pr_comment(findings: list[dict]) -> str:
 
     lines.append("---")
     lines.append("*Posted by terraform-ai-guardian*")
+    lines.append(f"_Last updated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC_")
 
     return "\n".join(lines)
+
+
+REVIEW_MARKER = "## 🛡️ Terraform Security & Compliance Review"
 
 
 def post_review_to_github(
@@ -279,12 +284,18 @@ def post_review_to_github(
     pr_number: int,
     github_token: str,
 ) -> str:
-    """Post findings as a single PR comment and return the comment URL."""
+    """Upsert the review comment on the PR and return the comment URL."""
     gh = Github(auth=Auth.Token(github_token))
     repo = gh.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
 
     body = build_pr_comment(findings)
+
+    for existing in pr.get_issue_comments():
+        if existing.body.startswith(REVIEW_MARKER):
+            existing.edit(body)
+            return existing.html_url
+
     comment = pr.create_issue_comment(body)
     return comment.html_url
 
