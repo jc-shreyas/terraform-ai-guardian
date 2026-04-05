@@ -17,7 +17,7 @@ resource "aws_db_instance" "main" {
 
   db_name  = "appdb"
   username = "admin"
-  password = "SuperSecret123!" # CRITICAL: Hardcoded password in plain text
+  password = "SuperSecret1234!" # CRITICAL: Hardcoded password in plain text
 
   vpc_security_group_ids = [aws_security_group.database.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
@@ -37,7 +37,7 @@ resource "aws_db_instance" "main" {
   tags = {
     Name        = "${var.project_name}-db"
     Environment = var.environment
-  }
+  
 }
 
 resource "aws_db_subnet_group" "main" {
