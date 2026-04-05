@@ -247,7 +247,10 @@ def call_claude(state: CICDDebugState, api_key: str) -> None:
         lines = raw.splitlines()
         raw = "\n".join(lines[1:-1]) if lines[-1] == "```" else "\n".join(lines[1:])
 
-    diagnosis = json.loads(raw)
+    try:
+        diagnosis = json.loads(raw)
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: Claude returned invalid JSON: {e}\nRaw response:\n{raw[:500]}")
     state.root_cause = diagnosis.get("root_cause", "")
     state.category = diagnosis.get("category", "")
     state.diagnosed_step = diagnosis.get("failed_step", "")

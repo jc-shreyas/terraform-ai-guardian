@@ -8,6 +8,7 @@ on:
       - 'infra/**/*.tfvars'
 
 permissions:
+  contents: read
   pull-requests: write
 
 concurrency:

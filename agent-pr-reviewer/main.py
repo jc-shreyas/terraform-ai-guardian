@@ -133,7 +133,10 @@ def call_claude(tf_files: dict[str, str], api_key: str) -> list[dict]:
         lines = raw.splitlines()
         raw = "\n".join(lines[1:-1]) if lines[-1] == "```" else "\n".join(lines[1:])
 
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: Claude returned invalid JSON: {e}\nRaw response:\n{raw[:500]}")
 
 
 # ---------------------------------------------------------------------------
